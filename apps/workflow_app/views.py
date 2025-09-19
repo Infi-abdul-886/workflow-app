@@ -9,12 +9,6 @@ from django.db.models import Q, Count, Avg
 from django.utils import timezone
 from django.apps import apps
 from django.views.decorators.csrf import ensure_csrf_cookie 
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.authentication import SessionAuthentication, BasicAuthentication
-from rest_framework_simplejwt.authentication import JWTAuthentication
 import json
 import uuid
 from datetime import datetime, timedelta
@@ -23,22 +17,14 @@ from .models import (
     NodeType, Workflow, WorkflowExecution, NodeExecution,
     WorkflowWebhook, WorkflowSchedule, WorkflowTemplate, WorkflowVariable
 )
-from .serializers import (
-    NodeTypeSerializer, WorkflowSerializer, WorkflowExecutionSerializer,
-    WorkflowWebhookSerializer, WorkflowScheduleSerializer, WorkflowTemplateSerializer,
-    WorkflowVariableSerializer
-)
 from .engine import WorkflowEngine
 from .tasks import execute_workflow_task
-from .scheduler import schedule_workflow, unschedule_workflow
 
 # Dashboard View
 @login_required
 def dashboard_view(request):
     """Dashboard with workflow statistics and recent activity"""
-    user_workflows = Workflow.objects.filter(
-        Q(created_by_id=request.user.id) | Q(shared_with__id=request.user.id)
-    ).distinct()
+    user_workflows = Workflow.objects.filter(created_by_id=request.user.id)
     
     # Calculate statistics
     total_workflows = user_workflows.count()
@@ -62,6 +48,11 @@ def dashboard_view(request):
     # Recent activity
     recent_executions = user_executions.order_by('-started_at')[:10]
     recent_workflows = user_workflows.order_by('-updated_at')[:10]
+    
+    # Top performing workflows
+    top_workflows = user_workflows.annotate(
+        execution_count=Count('executions')
+    ).filter(execution_count__gt=0).order_by('-execution_count')[:5]
     
     # Daily execution data for chart
     daily_executions = []
@@ -87,26 +78,18 @@ def dashboard_view(request):
         'avg_execution_time': round(avg_execution_time, 2),
         'recent_executions': recent_executions,
         'recent_workflows': recent_workflows,
+        'top_workflows': top_workflows,
         'daily_executions': json.dumps(daily_executions),
     }
     
     return render(request, 'workflow_app/dashboard.html', context)
-
 
 # Workflow Views
 @login_required
 @ensure_csrf_cookie
 def workflow_list_view(request):
     """List all workflows for the user"""
-    # Get the user ID
-    user_id = request.user.id if hasattr(request.user, 'id') else None
-    
-    if not user_id:
-        workflows = Workflow.objects.none()
-    else:
-        workflows = Workflow.objects.filter(
-            Q(created_by_id=user_id) | Q(shared_with__id=user_id)
-        ).distinct().order_by('-updated_at')
+    workflows = Workflow.objects.filter(created_by_id=request.user.id).order_by('-updated_at')
     
     # Apply filters
     search_query = request.GET.get('search', '')
@@ -122,8 +105,7 @@ def workflow_list_view(request):
         workflows = workflows.filter(status=status_filter)
     
     # Add execution counts
-    for workflow in workflows:
-        workflow.execution_count = workflow.executions.count()
+    workflows = workflows.annotate(execution_count=Count('executions'))
     
     # Statistics
     total_workflows = workflows.count()
@@ -151,10 +133,7 @@ def workflow_list_view(request):
 @ensure_csrf_cookie
 def workflow_detail_view(request, workflow_id):
     """Detailed view of a specific workflow"""
-    workflow = get_object_or_404(
-        Workflow.objects.select_related(),
-        Q(id=workflow_id) & (Q(created_by_id=request.user.id) | Q(shared_with__id=request.user.id))
-    )
+    workflow = get_object_or_404(Workflow, id=workflow_id, created_by_id=request.user.id)
     
     # Execution statistics
     executions = workflow.executions.all()
@@ -205,10 +184,7 @@ def workflow_editor_view(request, workflow_id=None):
     workflow_json = {'nodes': [], 'connections': []}
 
     if workflow_id:
-        workflow = get_object_or_404(
-            Workflow,
-            Q(id=workflow_id) & (Q(created_by_id=request.user.id) | Q(shared_with__id=request.user.id))
-        )
+        workflow = get_object_or_404(Workflow, id=workflow_id, created_by_id=request.user.id)
         workflow_json = workflow.definition or {'nodes': [], 'connections': []}
     
     context = {
@@ -274,7 +250,7 @@ def template_detail_view(request, template_id):
     template = get_object_or_404(WorkflowTemplate, id=template_id)
     
     # Check if user can view this template
-    if not template.is_public and template.created_by != request.user:
+    if not template.is_public and template.created_by_id != request.user.id:
         messages.error(request, "You don't have permission to view this template.")
         return redirect('workflow_app:template_list')
     
@@ -283,7 +259,7 @@ def template_detail_view(request, template_id):
     node_count = len(definition.get('nodes', []))
     connection_count = len(definition.get('connections', []))
     
-    can_edit = template.created_by == request.user
+    can_edit = template.created_by_id == request.user.id
     
     context = {
         'template': template,
@@ -371,10 +347,8 @@ def template_edit_view(request, template_id):
 def execution_list_view(request):
     """List workflow executions"""
     executions = WorkflowExecution.objects.filter(
-        workflow__in=Workflow.objects.filter(
-            Q(created_by__id=request.user.id) | Q(shared_with__id=request.user.id)
-        )
-    ).select_related('workflow', 'triggered_by_user').order_by('-started_at')
+        workflow__created_by_id=request.user.id
+    ).select_related('workflow').order_by('-started_at')
     
     # Apply filters
     workflow_filter = request.GET.get('workflow', '')
@@ -402,9 +376,7 @@ def execution_list_view(request):
     success_rate = round((successful_executions / total_executions * 100) if total_executions > 0 else 0, 1)
     
     # User workflows for filter dropdown
-    user_workflows = Workflow.objects.filter(
-    Q(created_by__id=request.user.id) | Q(shared_with__id=request.user.id)
-    ).distinct().order_by('name')
+    user_workflows = Workflow.objects.filter(created_by_id=request.user.id).order_by('name')
     
     # Pagination
     paginator = Paginator(executions, 20)
@@ -480,473 +452,5 @@ def webhook_receiver(request, endpoint_path):
         
     except WorkflowWebhook.DoesNotExist:
         return JsonResponse({'error': 'Webhook not found'}, status=404)
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
-
-# API ViewSets
-class NodeTypeViewSet(viewsets.ReadOnlyModelViewSet):
-    """API for node types"""
-    queryset = NodeType.objects.filter(is_active=True)
-    serializer_class = NodeTypeSerializer
-    permission_classes = [IsAuthenticated]
-
-class WorkflowViewSet(viewsets.ModelViewSet):
-    """API for workflows"""
-    serializer_class = WorkflowSerializer
-    authentication_classes = [SessionAuthentication, BasicAuthentication, JWTAuthentication]
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return Workflow.objects.filter(
-            Q(created_by_id=self.request.user.id) | Q(shared_with__id=self.request.user.id)
-        ).distinct()
-    
-    def perform_create(self, serializer):
-        serializer.save(created_by_id=self.request.user.id)
-    
-    @action(detail=True, methods=['post'])
-    def execute(self, request, pk=None):
-        """Execute a workflow"""
-        workflow = self.get_object()
-        
-        if workflow.status != 'active':
-            return Response(
-                {'error': 'Workflow must be active to execute'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        input_data = request.data.get('input_data', {})
-        sync = request.data.get('sync', False)
-        test_mode = request.data.get('test_mode', False)
-        
-        # Create execution
-        execution = WorkflowExecution.objects.create(
-            workflow=workflow,
-            triggered_by='manual',
-            triggered_by_user=request.user,
-            input_data=input_data,
-            execution_context={
-                'manual_trigger': True,
-                'test_mode': test_mode
-            }
-        )
-        
-        if sync:
-            # Execute synchronously
-            engine = WorkflowEngine()
-            success = engine.execute_workflow(str(execution.id))
-            execution.refresh_from_db()
-            
-            return Response({
-                'execution_id': str(execution.id),
-                'status': execution.status,
-                'success': success,
-                'output_data': execution.output_data
-            })
-        else:
-            # Execute asynchronously
-            execute_workflow_task.delay(str(execution.id))
-            
-            return Response({
-                'execution_id': str(execution.id),
-                'status': 'queued',
-                'message': 'Workflow execution started'
-            })
-    
-    @action(detail=True, methods=['post'])
-    def activate(self, request, pk=None):
-        """Activate a workflow"""
-        workflow = self.get_object()
-        workflow.status = 'active'
-        workflow.save()
-        
-        # Schedule if cron expression is provided
-        if workflow.cron_expression:
-            try:
-                schedule_workflow(workflow, workflow.cron_expression, workflow.timezone)
-            except Exception as e:
-                pass  # Continue even if scheduling fails
-        
-        return Response({'status': 'active', 'message': 'Workflow activated'})
-    
-    @action(detail=True, methods=['post'])
-    def deactivate(self, request, pk=None):
-        """Deactivate a workflow"""
-        workflow = self.get_object()
-        workflow.status = 'inactive'
-        workflow.save()
-        
-        # Unschedule if scheduled
-        if workflow.is_scheduled:
-            try:
-                unschedule_workflow(workflow)
-            except Exception as e:
-                pass  # Continue even if unscheduling fails
-        
-        return Response({'status': 'inactive', 'message': 'Workflow deactivated'})
-    
-    @action(detail=True, methods=['post'])
-    def duplicate(self, request, pk=None):
-        """Duplicate a workflow"""
-        workflow = self.get_object()
-        
-        new_workflow = Workflow.objects.create(
-            name=f"{workflow.name} (Copy)",
-            description=workflow.description,
-            definition=workflow.definition,
-            created_by=request.user,
-            status='draft'
-        )
-        
-        return Response({
-            'id': str(new_workflow.id),
-            'name': new_workflow.name,
-            'message': 'Workflow duplicated successfully'
-        })
-    
-    @action(detail=True, methods=['get'])
-    def export(self, request, pk=None):
-        """Export workflow definition"""
-        workflow = self.get_object()
-        
-        export_data = {
-            'name': workflow.name,
-            'description': workflow.description,
-            'definition': workflow.definition,
-            'version': workflow.version,
-            'exported_at': timezone.now().isoformat(),
-            'exported_by': request.user.username
-        }
-        
-        response = HttpResponse(
-            json.dumps(export_data, indent=2),
-            content_type='application/json'
-        )
-        response['Content-Disposition'] = f'attachment; filename="workflow-{workflow.name}.json"'
-        
-        return response
-    
-    @action(detail=True, methods=['get'])
-    def validate(self, request, pk=None):
-        """Validate workflow definition"""
-        workflow = self.get_object()
-        
-        errors = []
-        warnings = []
-        
-        definition = workflow.definition or {}
-        nodes = definition.get('nodes', [])
-        connections = definition.get('connections', [])
-        
-        # Check for trigger nodes
-        trigger_nodes = [n for n in nodes if self.nodeTypes.get(n.get('type', ''), {}).get('category') == 'trigger']
-        if not trigger_nodes:
-            errors.append("Workflow must have at least one trigger node")
-        
-        # Check for orphaned nodes
-        connected_nodes = set()
-        for conn in connections:
-            connected_nodes.add(conn.get('source'))
-            connected_nodes.add(conn.get('target'))
-        
-        for node in nodes:
-            if node['id'] not in connected_nodes and len(nodes) > 1:
-                warnings.append(f"Node '{node.get('name', node['id'])}' is not connected")
-        
-        # Check for cycles
-        if self._has_cycles(nodes, connections):
-            errors.append("Workflow contains cycles")
-        
-        return Response({
-            'valid': len(errors) == 0,
-            'errors': errors,
-            'warnings': warnings
-        })
-    
-    def _has_cycles(self, nodes, connections):
-        """Check if workflow has cycles using DFS"""
-        # Build adjacency list
-        graph = {}
-        for node in nodes:
-            graph[node['id']] = []
-        
-        for conn in connections:
-            source = conn.get('source')
-            target = conn.get('target')
-            if source in graph:
-                graph[source].append(target)
-        
-        # DFS to detect cycles
-        visited = set()
-        rec_stack = set()
-        
-        def has_cycle_util(node):
-            visited.add(node)
-            rec_stack.add(node)
-            
-            for neighbor in graph.get(node, []):
-                if neighbor not in visited:
-                    if has_cycle_util(neighbor):
-                        return True
-                elif neighbor in rec_stack:
-                    return True
-            
-            rec_stack.remove(node)
-            return False
-        
-        for node_id in graph:
-            if node_id not in visited:
-                if has_cycle_util(node_id):
-                    return True
-        
-        return False
-
-class WorkflowExecutionViewSet(viewsets.ReadOnlyModelViewSet):
-    """API for workflow executions"""
-    serializer_class = WorkflowExecutionSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return WorkflowExecution.objects.filter(
-            workflow__in=Workflow.objects.filter(
-                Q(created_by_id=self.request.user.id) | Q(shared_with__id=self.request.user.id)
-            )
-        ).select_related('workflow', 'triggered_by_user')
-    
-    @action(detail=True, methods=['get'])
-    def logs(self, request, pk=None):
-        """Get execution logs"""
-        execution = self.get_object()
-        
-        logs = []
-        for node_execution in execution.node_executions.all().order_by('execution_order'):
-            logs.append({
-                'timestamp': node_execution.started_at.isoformat() if node_execution.started_at else '',
-                'level': 'error' if node_execution.status == 'failed' else 'info',
-                'node_name': node_execution.node_name,
-                'message': node_execution.error_message or f"Node executed with status: {node_execution.status}",
-                'duration_ms': node_execution.duration_ms,
-                'status': node_execution.status
-            })
-        
-        return Response({'logs': logs})
-    
-    @action(detail=True, methods=['post'])
-    def cancel(self, request, pk=None):
-        """Cancel a running execution"""
-        execution = self.get_object()
-        
-        if execution.status in ['queued', 'running']:
-            execution.status = 'cancelled'
-            execution.finished_at = timezone.now()
-            execution.calculate_duration()
-            execution.save()
-            
-            return Response({'status': 'cancelled', 'message': 'Execution cancelled'})
-        else:
-            return Response(
-                {'error': 'Execution cannot be cancelled'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-class WorkflowVariableViewSet(viewsets.ModelViewSet):
-    """API for workflow variables"""
-    serializer_class = WorkflowVariableSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return WorkflowVariable.objects.filter(created_by_id=self.request.user.id)
-
-class WorkflowWebhookViewSet(viewsets.ModelViewSet):
-    """API for workflow webhooks"""
-    serializer_class = WorkflowWebhookSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return WorkflowWebhook.objects.filter(
-            workflow__in=Workflow.objects.filter(
-                Q(created_by_id=self.request.user.id) | Q(shared_with__id=self.request.user.id)
-            )
-        )
-
-class WorkflowTemplateViewSet(viewsets.ModelViewSet):
-    """API for workflow templates"""
-    serializer_class = WorkflowTemplateSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return WorkflowTemplate.objects.filter(
-            Q(is_public=True) | Q(created_by_id=self.request.user.id)
-        )
-    
-    @action(detail=True, methods=['post'])
-    def use_template(self, request, pk=None):
-        """Create a workflow from template"""
-        template = self.get_object()
-        
-        # Create new workflow from template
-        workflow = Workflow.objects.create(
-            name=f"{template.name} - {timezone.now().strftime('%Y%m%d')}",
-            description=f"Created from template: {template.name}",
-            definition=template.template_definition,
-            created_by_id=request.user.id,
-            status='draft',
-            tags=['from-template', template.name.lower().replace(' ', '-')]
-        )
-        
-        # Increment usage count
-        template.usage_count += 1
-        template.save()
-        
-        return Response({
-            'id': str(workflow.id),
-            'name': workflow.name,
-            'message': 'Workflow created from template'
-        })
-
-# API Endpoints for Editor
-@csrf_exempt
-@require_http_methods(["GET", "POST"])
-def workflow_api(request):
-    """API endpoint for workflow operations"""
-    if request.method == 'GET':
-        # Get available models for query building
-        try:
-            models_data = []
-            for model in apps.get_models():
-                if 'django.contrib' in model.__module__:
-                    continue
-                
-                fields = []
-                for field in model._meta.get_fields():
-                    if hasattr(field, 'column'):
-                        fields.append(field.column)
-                
-                models_data.append({
-                    'name': model.__name__,
-                    'table': model._meta.db_table,
-                    'fields': sorted(list(set(fields)))
-                })
-            
-            return JsonResponse({
-                'models': models_data,
-                'node_types': list(NodeType.objects.filter(is_active=True).values(
-                    'name', 'display_name', 'category', 'icon', 'color', 'config_schema'
-                ))
-            })
-            
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-    
-    elif request.method == 'POST':
-        # Save workflow
-        try:
-            data = json.loads(request.body)
-            workflow_id = data.get('id')
-            
-            if workflow_id:
-                # Update existing workflow
-                workflow = Workflow.objects.get(id=workflow_id)
-                workflow.name = data.get('name', workflow.name)
-                workflow.description = data.get('description', workflow.description)
-                workflow.definition = data.get('definition', workflow.definition)
-                workflow.save()
-            else:
-                # Create new workflow
-                workflow = Workflow.objects.create(
-                    name=data.get('name', 'Untitled Workflow'),
-                    description=data.get('description', ''),
-                    definition=data.get('definition', {}),
-                    created_by_id=data.get('user_id', 1),  # Default user
-                    status='draft'
-                )
-            
-            return JsonResponse({
-                'id': str(workflow.id),
-                'name': workflow.name,
-                'status': workflow.status,
-                'message': 'Workflow saved successfully'
-            })
-            
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def execute_workflow_api(request, workflow_id):
-    """Execute a workflow via API"""
-    try:
-        workflow = get_object_or_404(Workflow, id=workflow_id)
-        
-        if workflow.status != 'active':
-            return JsonResponse(
-                {'error': 'Workflow must be active to execute'},
-                status=400
-            )
-        
-        data = json.loads(request.body) if request.body else {}
-        input_data = data.get('input_data', {})
-        
-        # Get user from request
-        user = request.user if request.user.is_authenticated else None
-        
-        # Create execution
-        execution = WorkflowExecution.objects.create(
-            workflow=workflow,
-            triggered_by='api',
-            triggered_by_user=user,
-            input_data=input_data,
-            execution_context={'api_trigger': True}
-        )
-        
-        # Execute workflow
-        execute_workflow_task.delay(str(execution.id))
-        
-        return JsonResponse({
-            'execution_id': str(execution.id),
-            'status': 'queued',
-            'message': 'Workflow execution started'
-        })
-        
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
-
-@csrf_exempt
-@require_http_methods(["GET"])
-def execution_status_api(request, execution_id):
-    """Get execution status and results"""
-    try:
-        execution = get_object_or_404(
-            WorkflowExecution.objects.select_related('workflow'),
-            id=execution_id
-        )
-        
-        # Get node executions
-        node_executions = []
-        for ne in execution.node_executions.all().order_by('execution_order'):
-            node_executions.append({
-                'node_id': ne.node_id,
-                'node_name': ne.node_name,
-                'node_type': ne.node_type,
-                'status': ne.status,
-                'duration_ms': ne.duration_ms,
-                'input_data': ne.input_data,
-                'output_data': ne.output_data,
-                'error_message': ne.error_message
-            })
-        
-        return JsonResponse({
-            'id': str(execution.id),
-            'workflow_id': str(execution.workflow.id),
-            'workflow_name': execution.workflow.name,
-            'status': execution.status,
-            'started_at': execution.started_at.isoformat(),
-            'finished_at': execution.finished_at.isoformat() if execution.finished_at else None,
-            'duration_seconds': execution.duration_seconds,
-            'output_data': execution.output_data,
-            'error_message': execution.error_message,
-            'node_executions': node_executions
-        })
-        
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)

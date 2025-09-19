@@ -3,13 +3,13 @@ Node handlers for different node types
 """
 from typing import Dict, Any, Optional
 from .base import BaseNodeHandler
-from .trigger_handlers import WebhookTriggerHandler, ScheduleTriggerHandler
-from .data_handlers import DatabaseQueryHandler, HttpRequestHandler
+from .trigger_handlers import WebhookTriggerHandler, ScheduleTriggerHandler, ManualTriggerHandler
+from .data_handlers import DatabaseQueryHandler, HttpRequestHandler, GRMDataHandler, QueryBuilderHandler
 from .transform_handlers import DataTransformHandler, JsonParserHandler
 from .condition_handlers import ConditionHandler, SwitchHandler
-from .action_handlers import EmailSendHandler, SlackNotificationHandler,DelayHandler,WebhookSendHandler,FileWriteHandler,LogHandler
-from .output_handlers import DatabaseSaveHandler, FileExportHandler,ResponseHandler
-from .command_handlers import CommandExecutionHandler, FileOperationHandler, ManualTriggerHandler
+from .action_handlers import EmailSendHandler, SlackNotificationHandler, DelayHandler, WebhookSendHandler, FileWriteHandler, LogHandler
+from .output_handlers import DatabaseSaveHandler, FileExportHandler, ResponseHandler
+from .command_handlers import CommandExecutionHandler, FileOperationHandler
 
 # Registry of all node handlers
 NODE_HANDLERS = {
@@ -21,6 +21,8 @@ NODE_HANDLERS = {
     # Data handlers
     'database_query': DatabaseQueryHandler,
     'http_request': HttpRequestHandler,
+    'grm_data': GRMDataHandler,
+    'query_builder': QueryBuilderHandler,
     
     # Transform handlers
     'data_transform': DataTransformHandler,

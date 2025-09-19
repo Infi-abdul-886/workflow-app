@@ -1,10 +1,8 @@
 from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes, authentication_classes
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.shortcuts import get_object_or_404
-from django.contrib.auth import get_user_model
 from django.db.models import Q, Count, Avg
 from django.utils import timezone
 from django.http import JsonResponse
@@ -23,27 +21,20 @@ from .serializers import (
 )
 from .engine import WorkflowEngine
 from .tasks import execute_workflow_task
-from .scheduler import schedule_workflow, unschedule_workflow
-
-User = get_user_model()
 
 class NodeTypeViewSet(viewsets.ReadOnlyModelViewSet):
     """API for node types"""
     queryset = NodeType.objects.filter(is_active=True)
     serializer_class = NodeTypeSerializer
-    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
 class WorkflowViewSet(viewsets.ModelViewSet):
     """API for workflows"""
     serializer_class = WorkflowSerializer
-    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        return Workflow.objects.filter(
-            created_by_id=self.request.user.id
-        ).distinct()
+        return Workflow.objects.filter(created_by_id=self.request.user.id)
     
     def perform_create(self, serializer):
         serializer.save(created_by_id=self.request.user.id)
@@ -59,9 +50,13 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         if not data.get('definition'):
             data['definition'] = {'nodes': [], 'connections': []}
         
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        workflow = serializer.save(created_by_id=request.user.id)
+        workflow = Workflow.objects.create(
+            name=data['name'],
+            description=data.get('description', ''),
+            definition=data['definition'],
+            created_by_id=request.user.id,
+            status='draft'
+        )
         
         return Response({
             'id': str(workflow.id),
@@ -72,22 +67,26 @@ class WorkflowViewSet(viewsets.ModelViewSet):
     
     def update(self, request, *args, **kwargs):
         """Update an existing workflow"""
-        partial = kwargs.pop('partial', False)
         instance = self.get_object()
         
-        # Increment version if definition changed
-        if 'definition' in request.data and request.data['definition'] != instance.definition:
-            request.data['version'] = instance.version + 1
+        # Update fields
+        if 'name' in request.data:
+            instance.name = request.data['name']
+        if 'description' in request.data:
+            instance.description = request.data['description']
+        if 'definition' in request.data:
+            instance.definition = request.data['definition']
+            instance.version += 1
+        if 'status' in request.data:
+            instance.status = request.data['status']
         
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        workflow = serializer.save()
+        instance.save()
         
         return Response({
-            'id': str(workflow.id),
-            'name': workflow.name,
-            'status': workflow.status,
-            'version': workflow.version,
+            'id': str(instance.id),
+            'name': instance.name,
+            'status': instance.status,
+            'version': instance.version,
             'message': 'Workflow updated successfully'
         })
     
@@ -102,12 +101,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        serializer = WorkflowExecuteSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        input_data = serializer.validated_data.get('input_data', {})
-        sync = serializer.validated_data.get('sync', False)
-        test_mode = serializer.validated_data.get('test_mode', False)
+        input_data = request.data.get('input_data', {})
+        sync = request.data.get('sync', False)
+        test_mode = request.data.get('test_mode', False)
         
         # Create execution
         execution = WorkflowExecution.objects.create(
@@ -151,13 +147,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         workflow.status = 'active'
         workflow.save()
         
-        # Schedule if cron expression is provided
-        if workflow.cron_expression:
-            try:
-                schedule_workflow(workflow, workflow.cron_expression, workflow.timezone)
-            except Exception as e:
-                pass  # Continue even if scheduling fails
-        
         return Response({'status': 'active', 'message': 'Workflow activated'})
     
     @action(detail=True, methods=['post'])
@@ -166,13 +155,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         workflow = self.get_object()
         workflow.status = 'inactive'
         workflow.save()
-        
-        # Unschedule if scheduled
-        if workflow.is_scheduled:
-            try:
-                unschedule_workflow(workflow)
-            except Exception as e:
-                pass  # Continue even if unscheduling fails
         
         return Response({'status': 'inactive', 'message': 'Workflow deactivated'})
     
@@ -210,59 +192,15 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         }
         
         return Response(export_data)
-    
-    @action(detail=True, methods=['post'])
-    def validate(self, request, pk=None):
-        """Validate workflow definition"""
-        workflow = self.get_object()
-        
-        errors = []
-        warnings = []
-        
-        definition = workflow.definition or {}
-        nodes = definition.get('nodes', [])
-        connections = definition.get('connections', [])
-        
-        # Check for trigger nodes
-        trigger_nodes = []
-        for node in nodes:
-            try:
-                node_type = NodeType.objects.get(name=node.get('type', ''))
-                if node_type.category == 'trigger':
-                    trigger_nodes.append(node)
-            except NodeType.DoesNotExist:
-                errors.append(f"Unknown node type: {node.get('type', '')}")
-        
-        if not trigger_nodes:
-            errors.append("Workflow must have at least one trigger node")
-        
-        # Check for orphaned nodes
-        connected_nodes = set()
-        for conn in connections:
-            connected_nodes.add(conn.get('source'))
-            connected_nodes.add(conn.get('target'))
-        
-        for node in nodes:
-            if node['id'] not in connected_nodes and len(nodes) > 1:
-                warnings.append(f"Node '{node.get('name', node['id'])}' is not connected")
-        
-        return Response({
-            'valid': len(errors) == 0,
-            'errors': errors,
-            'warnings': warnings
-        })
 
 class WorkflowExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     """API for workflow executions"""
     serializer_class = WorkflowExecutionSerializer
-    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         return WorkflowExecution.objects.filter(
-            workflow__in=Workflow.objects.filter(
-                created_by_id=self.request.user.id
-            )
+            workflow__created_by_id=self.request.user.id
         ).select_related('workflow')
     
     @action(detail=True, methods=['post'])
@@ -286,7 +224,6 @@ class WorkflowExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 class WorkflowVariableViewSet(viewsets.ModelViewSet):
     """API for workflow variables"""
     serializer_class = WorkflowVariableSerializer
-    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
@@ -298,20 +235,16 @@ class WorkflowVariableViewSet(viewsets.ModelViewSet):
 class WorkflowWebhookViewSet(viewsets.ModelViewSet):
     """API for workflow webhooks"""
     serializer_class = WorkflowWebhookSerializer
-    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         return WorkflowWebhook.objects.filter(
-            workflow__in=Workflow.objects.filter(
-                created_by_id=self.request.user.id
-            )
+            workflow__created_by_id=self.request.user.id
         )
 
 class WorkflowTemplateViewSet(viewsets.ModelViewSet):
     """API for workflow templates"""
     serializer_class = WorkflowTemplateSerializer
-    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
@@ -352,10 +285,7 @@ class WorkflowTemplateViewSet(viewsets.ModelViewSet):
 @permission_classes([IsAuthenticated])
 def dashboard_stats_api(request):
     """Get dashboard statistics"""
-    user_workflows = Workflow.objects.filter(
-        created_by_id=request.user.id
-    ).distinct()
-    
+    user_workflows = Workflow.objects.filter(created_by_id=request.user.id)
     user_executions = WorkflowExecution.objects.filter(workflow__in=user_workflows)
     
     # Calculate statistics
@@ -395,9 +325,7 @@ def dashboard_stats_api(request):
 @permission_classes([IsAuthenticated])
 def recent_activity_api(request):
     """Get recent activity for dashboard"""
-    user_workflows = Workflow.objects.filter(
-        created_by_id=request.user.id
-    ).distinct()
+    user_workflows = Workflow.objects.filter(created_by_id=request.user.id)
     
     recent_executions = WorkflowExecution.objects.filter(
         workflow__in=user_workflows
@@ -435,9 +363,7 @@ def execution_logs_api(request, execution_id):
     try:
         execution = WorkflowExecution.objects.get(
             id=execution_id,
-            workflow__in=Workflow.objects.filter(
-                created_by_id=request.user.id
-            )
+            workflow__created_by_id=request.user.id
         )
         
         logs = []

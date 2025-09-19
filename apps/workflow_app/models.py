@@ -5,9 +5,6 @@ from django.conf import settings
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 
-# User model reference to use string reference instead of settings
-User = 'query.SystemTUsers'
-
 class NodeType(models.Model):
     """Registry of available node types with their schemas"""
     CATEGORY_CHOICES = [
@@ -55,22 +52,8 @@ class Workflow(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     
-    # Store creator as FK to the system user table but keep existing db column name
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        db_column='created_by_id',
-        related_name='workflows'
-    )
-    # Use an explicit through model for the existing join table to avoid
-    # Django inferring the wrong column name for the custom user model.
-    shared_with = models.ManyToManyField(
-        settings.AUTH_USER_MODEL,
-        through='WorkflowSharedWith',
-        through_fields=('workflow', 'user'),
-        related_name='shared_workflows',
-        blank=True,
-    )
+    # Store creator as integer ID to match existing system
+    created_by_id = models.IntegerField()
     
     # Workflow state
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
@@ -112,57 +95,7 @@ class Workflow(models.Model):
     def get_connections(self):
         """Extract connections from workflow definition"""
         return self.definition.get('connections', [])
-    
-    def validate_definition(self):
-        """Validate workflow definition"""
-        errors = []
-        
-        if not self.definition:
-            errors.append("Workflow definition is required")
-            return errors
-        
-        nodes = self.definition.get('nodes', [])
-        connections = self.definition.get('connections', [])
-        
-        if not nodes:
-            errors.append("Workflow must have at least one node")
-        
-        # Check for trigger nodes
-        trigger_nodes = []
-        for node in nodes:
-            try:
-                node_type = NodeType.objects.get(name=node.get('type', ''))
-                if node_type.category == 'trigger':
-                    trigger_nodes.append(node)
-            except NodeType.DoesNotExist:
-                errors.append(f"Unknown node type: {node.get('type', '')}")
-        
-        if not trigger_nodes:
-            errors.append("Workflow must have at least one trigger node")
-        
-        return errors
-    
-    def clean(self):
-        """Validate model before saving"""
-        super().clean()
-        errors = self.validate_definition()
-        if errors:
-            raise ValidationError({'definition': errors})
 
-class WorkflowSharedWith(models.Model):
-    """Explicit through model for workflow <-> user many-to-many.
-
-    This matches the existing DB table `workflow_app_workflow_shared_with` so
-    Django won't try to lookup a column named `systemtusers_id`.
-    """
-    id = models.AutoField(primary_key=True)
-    workflow = models.ForeignKey('Workflow', on_delete=models.CASCADE)
-    # The system user table uses 'system_t_users' with primary key 'id'
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, db_column='user_id', on_delete=models.DO_NOTHING)
-
-    class Meta:
-        db_table = 'workflow_app_workflow_shared_with'
-        managed = False
 class WorkflowExecution(models.Model):
     """Individual workflow execution instance"""
     STATUS_CHOICES = [
@@ -187,14 +120,7 @@ class WorkflowExecution(models.Model):
     # Execution details
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='queued')
     triggered_by = models.CharField(max_length=20, choices=TRIGGER_CHOICES, default='manual')
-    triggered_by_user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        db_column='triggered_by_user_id',
-        related_name='triggered_workflow_executions'
-    )
+    triggered_by_user_id = models.IntegerField(null=True, blank=True)
     
     # Timing
     started_at = models.DateTimeField(auto_now_add=True)

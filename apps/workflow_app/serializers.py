@@ -1,11 +1,8 @@
 from rest_framework import serializers
-from django.contrib.auth import get_user_model
 from .models import (
     NodeType, Workflow, WorkflowExecution, NodeExecution,
     WorkflowWebhook, WorkflowSchedule, WorkflowTemplate, WorkflowVariable
 )
-
-User = get_user_model()
 
 class NodeTypeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -24,9 +21,6 @@ class WorkflowVariableSerializer(serializers.ModelSerializer):
             'is_encrypted', 'is_secret', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_by_id', 'created_at', 'updated_at']
-        extra_kwargs = {
-            'value': {'write_only': True}  # Don't expose secret values
-        }
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -56,16 +50,6 @@ class WorkflowSerializer(serializers.ModelSerializer):
     def get_last_execution_status(self, obj):
         last_execution = obj.executions.first()
         return last_execution.status if last_execution else None
-
-    def create(self, validated_data):
-        validated_data['created_by_id'] = self.context['request'].user.id
-        return super().create(validated_data)
-
-    def update(self, instance, validated_data):
-        # Increment version on definition changes
-        if 'definition' in validated_data and validated_data['definition'] != instance.definition:
-            instance.version += 1
-        return super().update(instance, validated_data)
 
 class NodeExecutionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -126,44 +110,8 @@ class WorkflowTemplateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_by_id', 'created_at', 'usage_count']
 
-    def create(self, validated_data):
-        validated_data['created_by_id'] = self.context['request'].user.id
-        return super().create(validated_data)
-
 # Specialized serializers for different operations
 class WorkflowExecuteSerializer(serializers.Serializer):
     input_data = serializers.JSONField(default=dict, required=False)
     sync = serializers.BooleanField(default=False, required=False)
     test_mode = serializers.BooleanField(default=False, required=False)
-
-class WorkflowImportSerializer(serializers.Serializer):
-    workflow_data = serializers.JSONField()
-    name = serializers.CharField(max_length=255, required=False)
-    description = serializers.CharField(required=False)
-
-class WorkflowExportSerializer(serializers.Serializer):
-    include_executions = serializers.BooleanField(default=False)
-    include_variables = serializers.BooleanField(default=False)
-
-class NodeValidationSerializer(serializers.Serializer):
-    node_type = serializers.CharField()
-    config = serializers.JSONField()
-
-    def validate(self, data):
-        node_type_name = data['node_type']
-        config = data['config']
-        
-        try:
-            node_type = NodeType.objects.get(name=node_type_name, is_active=True)
-        except NodeType.DoesNotExist:
-            raise serializers.ValidationError(f"Node type '{node_type_name}' not found")
-        
-        # Validate config against schema
-        schema = node_type.config_schema
-        if schema and 'fields' in schema:
-            required_fields = [f['name'] for f in schema['fields'] if f.get('required', False)]
-            for field_name in required_fields:
-                if field_name not in config:
-                    raise serializers.ValidationError(f"Required field '{field_name}' is missing")
-        
-        return data

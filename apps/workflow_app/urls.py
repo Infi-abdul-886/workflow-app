@@ -24,25 +24,23 @@ urlpatterns = [
     path('api/executions/<uuid:execution_id>/logs/', api_views.execution_logs_api, name='execution_logs'),
     path('api/workflows/<uuid:workflow_id>/test/', api_views.test_workflow_api, name='test_workflow'),
     
-    # Legacy API endpoints for compatibility
-    path('api/workflow/', views.workflow_api, name='workflow_api'),
-    path('api/workflows/<uuid:workflow_id>/execute/', views.execute_workflow_api, name='execute_workflow_api'),
-    path('api/executions/<uuid:execution_id>/', views.execution_status_api, name='execution_status_api'),
+    # Main views
+    path('', views.dashboard_view, name='dashboard'),
+    path('dashboard/', views.dashboard_view, name='dashboard_alt'),
+    path('workflows/', views.workflow_list_view, name='workflow_list'),
+    path('workflows/create/', views.workflow_editor_view, name='workflow_create'),
+    path('workflows/<uuid:workflow_id>/', views.workflow_detail_view, name='workflow_detail'),
+    path('workflows/<uuid:workflow_id>/edit/', views.workflow_editor_view, name='workflow_edit'),
     
-    # Editor views
-    path('', views.workflow_list_view, name='workflow_list'),
-    path('create/', views.workflow_editor_view, name='workflow_create'),
-    path('<uuid:workflow_id>/edit/', views.workflow_editor_view, name='workflow_edit'),
-    path('<uuid:workflow_id>/', views.workflow_detail_view, name='workflow_detail'),
-    
-    # Webhook receiver
-    path('webhook/<str:endpoint_path>/', views.webhook_receiver, name='webhook_receiver'),
-    
-    # Management views
-    path('dashboard/', views.dashboard_view, name='dashboard'),
+    # Template views
     path('templates/', views.template_list_view, name='template_list'),
     path('templates/create/', views.template_create_view, name='template_create'),
     path('templates/<uuid:template_id>/', views.template_detail_view, name='template_detail'),
     path('templates/<uuid:template_id>/edit/', views.template_edit_view, name='template_edit'),
+    
+    # Execution views
     path('executions/', views.execution_list_view, name='execution_list'),
+    
+    # Webhook receiver
+    path('webhook/<str:endpoint_path>/', views.webhook_receiver, name='webhook_receiver'),
 ]
