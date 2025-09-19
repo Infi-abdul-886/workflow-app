@@ -1,0 +1,158 @@
+/* Base styles for the workflow application */
+:root {
+  --primary-color: #0d6efd;
+  --secondary-color: #6c757d;
+  --success-color: #198754;
+  --danger-color: #dc3545;
+  --warning-color: #ffc107;
+  --info-color: #0dcaf0;
+  --light-color: #f8f9fa;
+  --dark-color: #212529;
+}
+
+body {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f8f9fa;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1;
+}
+
+/* Navigation customizations */
+.navbar-brand {
+  font-weight: 600;
+}
+
+.navbar-nav .nav-link {
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.navbar-nav .nav-link:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+/* Card customizations */
+.card {
+  border: none;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  transition: box-shadow 0.15s ease-in-out;
+}
+
+.card:hover {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+/* Button customizations */
+.btn {
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+  background-color: #0b5ed7;
+  border-color: #0a58ca;
+  transform: translateY(-1px);
+}
+
+/* Status badges */
+.status-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+}
+
+.status-draft {
+  background-color: #6c757d;
+  color: white;
+}
+.status-active {
+  background-color: #198754;
+  color: white;
+}
+.status-inactive {
+  background-color: #ffc107;
+  color: #212529;
+}
+.status-archived {
+  background-color: #dc3545;
+  color: white;
+}
+
+.status-queued {
+  background-color: #6c757d;
+  color: white;
+}
+.status-running {
+  background-color: #0dcaf0;
+  color: #212529;
+}
+.status-success {
+  background-color: #198754;
+  color: white;
+}
+.status-failed {
+  background-color: #dc3545;
+  color: white;
+}
+.status-cancelled {
+  background-color: #ffc107;
+  color: #212529;
+}
+.status-timeout {
+  background-color: #fd7e14;
+  color: white;
+}
+
+/* Loading states */
+.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.spinner-border-sm {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .container-fluid {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .card-body {
+    padding: 1rem;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}

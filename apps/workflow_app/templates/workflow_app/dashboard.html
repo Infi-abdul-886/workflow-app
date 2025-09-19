@@ -1,0 +1,367 @@
+{% extends 'workflow_app/base.html' %}
+{% load static %}
+
+{% block title %}Dashboard - N8N Workflow Builder{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'workflow_app/css/dashboard.css' %}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <h1>Dashboard</h1>
+        <div class="header-actions">
+            <a href="{% url 'workflow_app:workflow_create' %}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Create Workflow
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Overview -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-project-diagram"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ total_workflows }}</div>
+                <div class="stat-label">Total Workflows</div>
+                <div class="stat-change">
+                    <span class="change-indicator positive">
+                        <i class="fas fa-arrow-up"></i> {{ active_workflows }} active
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon success">
+                <i class="fas fa-play-circle"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ total_executions }}</div>
+                <div class="stat-label">Total Executions</div>
+                <div class="stat-change">
+                    <span class="change-indicator positive">
+                        <i class="fas fa-arrow-up"></i> {{ success_rate }}% success
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon warning">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ avg_execution_time }}s</div>
+                <div class="stat-label">Avg Execution Time</div>
+                <div class="stat-change">
+                    <span class="change-indicator neutral">
+                        <i class="fas fa-minus"></i> {{ running_executions }} running
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon error">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ error_rate }}%</div>
+                <div class="stat-label">Error Rate</div>
+                <div class="stat-change">
+                    <span class="change-indicator negative">
+                        <i class="fas fa-arrow-down"></i> {{ failed_executions }} failed
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="dashboard-grid">
+        <!-- Execution Trends Chart -->
+        <div class="dashboard-card chart-card">
+            <div class="card-header">
+                <h3>Execution Trends (Last 7 Days)</h3>
+                <div class="card-actions">
+                    <button class="btn btn-sm btn-outline" onclick="refreshChart()">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-content">
+                <canvas id="executionTrendsChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h3>Recent Executions</h3>
+                <a href="{% url 'workflow_app:execution_list' %}" class="btn btn-sm btn-outline">View All</a>
+            </div>
+            <div class="card-content">
+                <div class="activity-list">
+                    {% for execution in recent_executions %}
+                    <div class="activity-item">
+                        <div class="activity-icon status-{{ execution.status }}">
+                            {% if execution.status == 'success' %}
+                                <i class="fas fa-check-circle"></i>
+                            {% elif execution.status == 'failed' %}
+                                <i class="fas fa-times-circle"></i>
+                            {% elif execution.status == 'running' %}
+                                <i class="fas fa-spinner fa-spin"></i>
+                            {% else %}
+                                <i class="fas fa-clock"></i>
+                            {% endif %}
+                        </div>
+                        <div class="activity-content">
+                            <div class="activity-title">
+                                <a href="{% url 'workflow_app:workflow_detail' execution.workflow.id %}">
+                                    {{ execution.workflow.name }}
+                                </a>
+                            </div>
+                            <div class="activity-meta">
+                                {{ execution.started_at|timesince }} ago
+                                {% if execution.duration_seconds %}
+                                    • {{ execution.duration_seconds|floatformat:1 }}s
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="activity-status">
+                            <span class="status-badge status-{{ execution.status }}">
+                                {{ execution.get_status_display }}
+                            </span>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="empty-message">
+                        <i class="fas fa-info-circle"></i>
+                        <p>No recent executions</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Workflows -->
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h3>Recent Workflows</h3>
+                <a href="{% url 'workflow_app:workflow_list' %}" class="btn btn-sm btn-outline">View All</a>
+            </div>
+            <div class="card-content">
+                <div class="workflow-list">
+                    {% for workflow in recent_workflows %}
+                    <div class="workflow-item">
+                        <div class="workflow-icon">
+                            <i class="fas fa-project-diagram"></i>
+                        </div>
+                        <div class="workflow-content">
+                            <div class="workflow-title">
+                                <a href="{% url 'workflow_app:workflow_detail' workflow.id %}">
+                                    {{ workflow.name }}
+                                </a>
+                            </div>
+                            <div class="workflow-meta">
+                                Updated {{ workflow.updated_at|timesince }} ago
+                            </div>
+                        </div>
+                        <div class="workflow-status">
+                            <span class="status-badge status-{{ workflow.status }}">
+                                {{ workflow.get_status_display }}
+                            </span>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="empty-message">
+                        <i class="fas fa-info-circle"></i>
+                        <p>No workflows yet</p>
+                        <a href="{% url 'workflow_app:workflow_create' %}" class="btn btn-primary btn-sm">
+                            Create Your First Workflow
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Performing Workflows -->
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h3>Top Performing Workflows</h3>
+            </div>
+            <div class="card-content">
+                <div class="performance-list">
+                    {% for workflow in top_workflows %}
+                    <div class="performance-item">
+                        <div class="performance-rank">{{ forloop.counter }}</div>
+                        <div class="performance-content">
+                            <div class="performance-title">
+                                <a href="{% url 'workflow_app:workflow_detail' workflow.id %}">
+                                    {{ workflow.name }}
+                                </a>
+                            </div>
+                            <div class="performance-stats">
+                                {{ workflow.execution_count }} executions
+                                {% if workflow.success_rate %}
+                                    • {{ workflow.success_rate|floatformat:1 }}% success
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="empty-message">
+                        <i class="fas fa-info-circle"></i>
+                        <p>No execution data yet</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- System Health -->
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h3>System Health</h3>
+            </div>
+            <div class="card-content">
+                <div class="health-metrics">
+                    <div class="health-item">
+                        <div class="health-label">Success Rate</div>
+                        <div class="health-value">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: {{ success_rate }}%"></div>
+                            </div>
+                            <span>{{ success_rate }}%</span>
+                        </div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-label">Error Rate</div>
+                        <div class="health-value">
+                            <div class="progress-bar error">
+                                <div class="progress-fill" style="width: {{ error_rate }}%"></div>
+                            </div>
+                            <span>{{ error_rate }}%</span>
+                        </div>
+                    </div>
+                    <div class="health-item">
+                        <div class="health-label">Active Workflows</div>
+                        <div class="health-value">
+                            <span class="health-number">{{ active_workflows }}/{{ total_workflows }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="dashboard-card">
+            <div class="card-header">
+                <h3>Quick Actions</h3>
+            </div>
+            <div class="card-content">
+                <div class="quick-actions">
+                    <a href="{% url 'workflow_app:workflow_create' %}" class="quick-action">
+                        <i class="fas fa-plus"></i>
+                        <span>Create Workflow</span>
+                    </a>
+                    <a href="{% url 'workflow_app:template_list' %}" class="quick-action">
+                        <i class="fas fa-copy"></i>
+                        <span>Browse Templates</span>
+                    </a>
+                    <a href="{% url 'workflow_app:execution_list' %}" class="quick-action">
+                        <i class="fas fa-history"></i>
+                        <span>View Executions</span>
+                    </a>
+                    <a href="#" class="quick-action">
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Execution trends chart
+const ctx = document.getElementById('executionTrendsChart').getContext('2d');
+const dailyExecutions = {{ daily_executions|safe }};
+
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: dailyExecutions.map(item => {
+            const date = new Date(item.day);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }),
+        datasets: [{
+            label: 'Successful',
+            data: dailyExecutions.map(item => item.successful),
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            tension: 0.4,
+            fill: true
+        }, {
+            label: 'Failed',
+            data: dailyExecutions.map(item => item.failed),
+            borderColor: '#ef4444',
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    stepSize: 1
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                position: 'top'
+            }
+        }
+    }
+});
+
+function refreshChart() {
+    // Reload the page to refresh data
+    window.location.reload();
+}
+
+// Auto-refresh every 30 seconds
+setInterval(() => {
+    // Only refresh if user is active
+    if (document.visibilityState === 'visible') {
+    fetch(window.location.href, { credentials: 'same-origin' })
+            .then(response => response.text())
+            .then(html => {
+                // Update only the stats without full page reload
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                // Update stat values
+                document.querySelectorAll('.stat-value').forEach((element, index) => {
+                    const newValue = doc.querySelectorAll('.stat-value')[index];
+                    if (newValue) {
+                        element.textContent = newValue.textContent;
+                    }
+                });
+            })
+            .catch(error => console.error('Error refreshing dashboard:', error));
+    }
+}, 30000);
+</script>
+{% endblock %}

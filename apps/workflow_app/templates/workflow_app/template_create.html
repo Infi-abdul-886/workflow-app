@@ -1,0 +1,74 @@
+{% extends 'workflow_app/base.html' %}
+{% load static %}
+
+{% block title %}Create Template{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'workflow_app/css/template-form.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="template-form-container">
+    <div class="page-header">
+        <h1>Create Workflow Template</h1>
+        <p>Create a reusable template from one of your existing workflows</p>
+    </div>
+
+    <form method="post" class="template-form">
+        {% csrf_token %}
+        
+        <div class="form-section">
+            <h3>Template Information</h3>
+            
+            <div class="form-group">
+                <label for="name">Template Name *</label>
+                <input type="text" id="name" name="name" required 
+                       placeholder="Enter template name">
+            </div>
+            
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea id="description" name="description" rows="4" 
+                          placeholder="Describe what this template does"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="category">Category</label>
+                <select id="category" name="category">
+                    {% for category in categories %}
+                        <option value="{{ category }}">{{ category|title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="is_public">
+                    <span class="checkmark"></span>
+                    Make this template public (visible to all users)
+                </label>
+            </div>
+        </div>
+        
+        <div class="form-section">
+            <h3>Source Workflow</h3>
+            
+            <div class="form-group">
+                <label for="workflow_id">Select Workflow *</label>
+                <select id="workflow_id" name="workflow_id" required>
+                    <option value="">Choose a workflow...</option>
+                    {% for workflow in workflows %}
+                        <option value="{{ workflow.id }}">{{ workflow.name }}</option>
+                    {% endfor %}
+                </select>
+                <small class="form-help">The template will be created from this workflow's structure</small>
+            </div>
+        </div>
+        
+        <div class="form-actions">
+            <a href="{% url 'workflow_app:template_list' %}" class="btn btn-outline">Cancel</a>
+            <button type="submit" class="btn btn-primary">Create Template</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

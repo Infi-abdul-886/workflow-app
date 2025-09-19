@@ -1,0 +1,418 @@
+.workflow-detail-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.workflow-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  color: white;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 2rem;
+}
+
+.workflow-info h1 {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  font-weight: 700;
+}
+
+.workflow-description {
+  font-size: 1.2rem;
+  margin-bottom: 1.5rem;
+  opacity: 0.9;
+  line-height: 1.6;
+}
+
+.workflow-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.status-badge {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.status-badge.status-active {
+  background: rgba(46, 204, 113, 0.2);
+  border: 1px solid rgba(46, 204, 113, 0.5);
+}
+
+.status-badge.status-draft {
+  background: rgba(156, 163, 175, 0.2);
+  border: 1px solid rgba(156, 163, 175, 0.5);
+}
+
+.status-badge.status-inactive {
+  background: rgba(251, 191, 36, 0.2);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+}
+
+.meta-item {
+  font-size: 0.95rem;
+  opacity: 0.9;
+}
+
+.header-actions {
+  display: flex;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 20px;
+}
+
+.stat-icon.success {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.stat-icon.error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.stat-content {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1f2937;
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 2rem;
+}
+
+.main-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.section {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.section h2,
+.section h3 {
+  padding: 1.5rem;
+  margin: 0;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.section h3 {
+  font-size: 1.125rem;
+  padding: 1rem 1.5rem;
+}
+
+.chart-container {
+  padding: 1.5rem;
+  height: 300px;
+  position: relative;
+}
+
+.executions-table {
+  width: 100%;
+}
+
+.executions-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.executions-table th {
+  background: #f8f9fa;
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  font-size: 0.875rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.executions-table td {
+  padding: 1rem;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: middle;
+}
+
+.executions-table tr:hover {
+  background: #f9fafb;
+}
+
+.executions-table tr:last-child td {
+  border-bottom: none;
+}
+
+.section-footer {
+  padding: 1rem 1.5rem;
+  background: #f8f9fa;
+  border-top: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+.variables-list,
+.webhooks-list {
+  padding: 1.5rem;
+}
+
+.variable-item,
+.webhook-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.variable-item:last-child,
+.webhook-item:last-child {
+  border-bottom: none;
+}
+
+.variable-name,
+.webhook-method {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.variable-value,
+.webhook-path {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.webhook-item {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.webhook-status {
+  font-size: 0.75rem;
+}
+
+.status-active {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.status-inactive {
+  color: #d97706;
+  font-weight: 600;
+}
+
+.tags-list {
+  padding: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tag {
+  background: #3b82f6;
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.empty-message {
+  padding: 1.5rem;
+  text-align: center;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+  transform: translateY(-2px);
+}
+
+.btn-success {
+  background: #10b981;
+  color: white;
+}
+
+.btn-success:hover {
+  background: #059669;
+  transform: translateY(-2px);
+}
+
+.btn-outline {
+  background: transparent;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.btn-outline:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.btn-sm {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+
+.dropdown {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  min-width: 160px;
+  z-index: 1000;
+  display: none;
+}
+
+.dropdown:hover .dropdown-menu {
+  display: block;
+}
+
+.dropdown-menu a {
+  display: block;
+  padding: 0.75rem 1rem;
+  color: #374151;
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.dropdown-menu a:hover {
+  background: #f9fafb;
+}
+
+@media (max-width: 1024px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .workflow-detail-container {
+    padding: 0 1rem;
+  }
+
+  .header-content {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .workflow-info h1 {
+    font-size: 2rem;
+  }
+
+  .workflow-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,296 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Editor - {{ workflow.name|default:"New Workflow" }}</title>
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{% static 'workflow_app/css/workflow-editor.css' %}">
+</head>
+<body>
+    <div id="workflow-editor" class="workflow-editor">
+        <!-- Top Toolbar -->
+        <header class="editor-toolbar">
+            <div class="toolbar-left">
+                <button id="back-btn" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back
+                </button>
+                <div class="workflow-info">
+                    <input type="text" id="workflow-name" class="workflow-name-input" 
+                           value="{{ workflow.name|default:'Untitled Workflow' }}" placeholder="Workflow Name">
+                    <input type="text" id="workflow-description" class="workflow-description-input" 
+                           value="{{ workflow.description|default:'' }}" placeholder="Description (optional)" style="margin-left: 10px; font-size: 0.9rem; opacity: 0.8;">
+                    <span class="workflow-status status-{{ workflow.status|default:'draft' }}">
+                        {{ workflow.get_status_display|default:'Draft' }}
+                    </span>
+                </div>
+            </div>
+            
+            <div class="toolbar-center">
+                <div class="zoom-controls">
+                    <button id="zoom-out" class="btn btn-icon" title="Zoom Out">
+                        <i class="fas fa-search-minus"></i>
+                    </button>
+                    <span id="zoom-level" class="zoom-display">100%</span>
+                    <button id="zoom-in" class="btn btn-icon" title="Zoom In">
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                    <button id="zoom-fit" class="btn btn-icon" title="Fit to Screen">
+                        <i class="fas fa-expand-arrows-alt"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="toolbar-right">
+                <button id="save-btn" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Save
+                </button>
+                <button id="test-btn" class="btn btn-success">
+                    <i class="fas fa-play"></i> Test
+                </button>
+                <button id="deploy-btn" class="btn btn-warning">
+                    <i class="fas fa-rocket"></i> Deploy
+                </button>
+                <div class="dropdown">
+                    <button id="menu-btn" class="btn btn-secondary dropdown-toggle">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <div class="dropdown-menu">
+                        <a href="#" id="export-btn"><i class="fas fa-download"></i> Export</a>
+                        <a href="#" id="import-btn"><i class="fas fa-upload"></i> Import</a>
+                        <a href="#" id="duplicate-btn"><i class="fas fa-copy"></i> Duplicate</a>
+                        <div class="dropdown-divider"></div>
+                        <a href="#" id="settings-btn"><i class="fas fa-cog"></i> Settings</a>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Editor Area -->
+        <div class="editor-main">
+            <!-- Left Sidebar - Node Palette -->
+            <aside class="node-palette">
+                <div class="palette-header">
+                    <h3>Nodes</h3>
+                    <input type="text" id="node-search" class="search-input" placeholder="Search nodes...">
+                </div>
+                
+                <div class="palette-content">
+                    <!-- Node categories will be populated by JavaScript -->
+                    <div class="node-category" data-category="trigger">
+                        <div class="category-header">
+                            <i class="fas fa-play-circle"></i>
+                            <span>Triggers</span>
+                            <i class="fas fa-chevron-down toggle-icon"></i>
+                        </div>
+                        <div class="category-nodes">
+                            <!-- Nodes will be populated here -->
+                        </div>
+                    </div>
+                    
+                    <div class="node-category" data-category="data">
+                        <div class="category-header">
+                            <i class="fas fa-database"></i>
+                            <span>Data Sources</span>
+                            <i class="fas fa-chevron-down toggle-icon"></i>
+                        </div>
+                        <div class="category-nodes">
+                            <!-- Nodes will be populated here -->
+                        </div>
+                    </div>
+                    
+                    <div class="node-category" data-category="transform">
+                        <div class="category-header">
+                            <i class="fas fa-exchange-alt"></i>
+                            <span>Transform</span>
+                            <i class="fas fa-chevron-down toggle-icon"></i>
+                        </div>
+                        <div class="category-nodes">
+                            <!-- Nodes will be populated here -->
+                        </div>
+                    </div>
+                    
+                    <div class="node-category" data-category="condition">
+                        <div class="category-header">
+                            <i class="fas fa-code-branch"></i>
+                            <span>Conditions</span>
+                            <i class="fas fa-chevron-down toggle-icon"></i>
+                        </div>
+                        <div class="category-nodes">
+                            <!-- Nodes will be populated here -->
+                        </div>
+                    </div>
+                    
+                    <div class="node-category" data-category="action">
+                        <div class="category-header">
+                            <i class="fas fa-bolt"></i>
+                            <span>Actions</span>
+                            <i class="fas fa-chevron-down toggle-icon"></i>
+                        </div>
+                        <div class="category-nodes">
+                            <!-- Nodes will be populated here -->
+                        </div>
+                    </div>
+                    
+                    <div class="node-category" data-category="output">
+                        <div class="category-header">
+                            <i class="fas fa-external-link-alt"></i>
+                            <span>Outputs</span>
+                            <i class="fas fa-chevron-down toggle-icon"></i>
+                        </div>
+                        <div class="category-nodes">
+                            <!-- Nodes will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Canvas Area -->
+            <main class="canvas-container">
+                <div class="canvas-wrapper">
+                    <div id="workflow-canvas" class="workflow-canvas">
+                        <!-- Workflow nodes will be placed here -->
+                    </div>
+                </div>
+                
+                <!-- Canvas Controls -->
+                <div class="canvas-controls">
+                    <button id="center-canvas" class="btn btn-icon" title="Center Canvas">
+                        <i class="fas fa-crosshairs"></i>
+                    </button>
+                    <button id="clear-canvas" class="btn btn-icon btn-danger" title="Clear All">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </main>
+
+            <!-- Right Sidebar - Properties Panel -->
+            <aside class="properties-panel">
+                <div class="panel-header">
+                    <h3 id="panel-title">Properties</h3>
+                    <button id="close-panel" class="btn btn-icon">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="panel-content">
+                    <div id="no-selection" class="no-selection">
+                        <i class="fas fa-mouse-pointer"></i>
+                        <p>Select a node to view its properties</p>
+                    </div>
+                    
+                    <div id="node-properties" class="node-properties" style="display: none;">
+                        <!-- Node properties form will be populated here -->
+                    </div>
+                    
+                    <div id="connection-properties" class="connection-properties" style="display: none;">
+                        <!-- Connection properties will be shown here -->
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- Bottom Panel - Execution Logs -->
+        <div class="bottom-panel">
+            <div class="panel-tabs">
+                <button class="tab-btn active" data-tab="logs">
+                    <i class="fas fa-list"></i> Execution Logs
+                </button>
+                <button class="tab-btn" data-tab="variables">
+                    <i class="fas fa-code"></i> Variables
+                </button>
+                <button class="tab-btn" data-tab="settings">
+                    <i class="fas fa-cog"></i> Settings
+                </button>
+            </div>
+            
+            <div class="panel-content">
+                <div id="logs-tab" class="tab-content active">
+                    <div class="logs-toolbar">
+                        <button id="clear-logs" class="btn btn-sm btn-secondary">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                        <button id="refresh-logs" class="btn btn-sm btn-primary">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
+                    </div>
+                    <div id="execution-logs" class="execution-logs">
+                        <div class="log-placeholder">
+                            <i class="fas fa-info-circle"></i>
+                            <p>No execution logs yet. Run your workflow to see logs here.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="variables-tab" class="tab-content">
+                    <div class="variables-content">
+                        <button id="add-variable" class="btn btn-sm btn-primary">
+                            <i class="fas fa-plus"></i> Add Variable
+                        </button>
+                        <div id="variables-list" class="variables-list">
+                            <!-- Variables will be listed here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="settings-tab" class="tab-content">
+                    <div class="settings-content">
+                        <form id="workflow-settings-form">
+                            <div class="form-group">
+                                <label for="timeout-setting">Execution Timeout (seconds)</label>
+                                <input type="number" id="timeout-setting" name="timeout" value="300" min="1" max="3600">
+                            </div>
+                            <div class="form-group">
+                                <label for="retries-setting">Max Retries</label>
+                                <input type="number" id="retries-setting" name="retries" value="3" min="0" max="10">
+                            </div>
+                            <div class="form-group">
+                                <label for="retry-delay-setting">Retry Delay (seconds)</label>
+                                <input type="number" id="retry-delay-setting" name="retry_delay" value="60" min="1" max="3600">
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div id="context-menu" class="context-menu" style="display: none;">
+        <!-- Context menu items will be populated by JavaScript -->
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="{% static 'workflow_app/js/workflow-editor.js' %}"></script>
+    <script>
+        // Initialize editor with workflow data
+        const workflowData = {{ workflow_json|safe }};
+        const workflowId = "{{ workflow.id|default:'' }}";
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        
+        // Initialize the workflow editor
+        document.addEventListener('DOMContentLoaded', function() {
+            window.workflowEditor = new WorkflowEditor({
+                workflowId: workflowId,
+                workflowData: workflowData,
+                csrfToken: csrfToken,
+                apiBaseUrl: '/api/workflow/' 
+            });
+        });
+    </script>
+</body>
+</html>

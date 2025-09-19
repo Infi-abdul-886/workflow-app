@@ -1,0 +1,337 @@
+{% extends 'workflow_app/base.html' %}
+{% load static %}
+
+{% block title %}Workflow Templates{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'workflow_app/css/template-list.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="template-list-container">
+    <div class="page-header">
+        <div class="header-content">
+            <h1>Workflow Templates</h1>
+            <div class="header-actions">
+                <a href="{% url 'workflow_app:template_create' %}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Create Template
+                </a>
+            </div>
+        </div>
+        
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-value">{{ total_templates }}</span>
+                <span class="stat-label">Total Templates</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ public_templates }}</span>
+                <span class="stat-label">Public</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ my_templates }}</span>
+                <span class="stat-label">My Templates</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="filters-section">
+        <form method="get" class="filters-form">
+            <div class="filter-group">
+                <input type="text" name="search" placeholder="Search templates..." 
+                       value="{{ search_query|default:'' }}" class="search-input">
+            </div>
+            <div class="filter-group">
+                <select name="category" class="category-filter">
+                    <option value="">All Categories</option>
+                    {% for category in categories %}
+                        <option value="{{ category }}" {% if category_filter == category %}selected{% endif %}>
+                            {{ category|title }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-secondary">Filter</button>
+            {% if search_query or category_filter %}
+                <a href="{% url 'workflow_app:template_list' %}" class="btn btn-outline">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="templates-grid">
+        {% for template in templates %}
+        <div class="template-card">
+            <div class="template-header">
+                <div class="template-category">{{ template.category|title }}</div>
+                {% if template.is_public %}
+                    <div class="template-badge public">
+                        <i class="fas fa-globe"></i> Public
+                    </div>
+                {% else %}
+                    <div class="template-badge private">
+                        <i class="fas fa-lock"></i> Private
+                    </div>
+                {% endif %}
+            </div>
+            
+            <div class="template-content">
+                <h3 class="template-name">{{ template.name }}</h3>
+                <p class="template-description">{{ template.description|truncatechars:120 }}</p>
+                
+                <div class="template-stats">
+                    <div class="stat">
+                        <i class="fas fa-download"></i>
+                        <span>{{ template.usage_count }} uses</span>
+                    </div>
+                    <div class="stat">
+                        <i class="fas fa-user"></i>
+                        <span>{{ template.created_by.username }}</span>
+                    </div>
+                    <div class="stat">
+                        <i class="fas fa-clock"></i>
+                        <span>{{ template.created_at|timesince }} ago</span>
+                    </div>
+                </div>
+                
+                {% if template.tags %}
+                <div class="template-tags">
+                    {% for tag in template.tags %}
+                        <span class="tag">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="template-actions">
+                <button class="btn btn-primary" onclick="useTemplate('{{ template.id }}')">
+                    <i class="fas fa-magic"></i> Use Template
+                </button>
+                <button class="btn btn-outline" onclick="previewTemplate('{{ template.id }}')">
+                    <i class="fas fa-eye"></i> Preview
+                </button>
+                {% if template.created_by == user %}
+                    <div class="dropdown">
+                        <button class="btn btn-outline dropdown-toggle">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                        <div class="dropdown-menu">
+                            <a href="{% url 'workflow_app:template_edit' template.id %}">
+                                <i class="fas fa-edit"></i> Edit
+                            </a>
+                            <a href="#" onclick="duplicateTemplate('{{ template.id }}')">
+                                <i class="fas fa-copy"></i> Duplicate
+                            </a>
+                            <a href="#" onclick="deleteTemplate('{{ template.id }}')">
+                                <i class="fas fa-trash"></i> Delete
+                            </a>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        {% empty %}
+        <div class="empty-state">
+            <i class="fas fa-copy"></i>
+            <h3>No templates found</h3>
+            <p>{% if search_query or category_filter %}Try adjusting your filters{% else %}Create your first template to get started{% endif %}</p>
+            {% if not search_query and not category_filter %}
+                <a href="{% url 'workflow_app:template_create' %}" class="btn btn-primary">Create Template</a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if page_obj.has_other_pages %}
+    <div class="pagination-container">
+        <div class="pagination">
+            {% if page_obj.has_previous %}
+                <a href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}{% if category_filter %}&category={{ category_filter }}{% endif %}" class="page-link">&laquo; First</a>
+                <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if category_filter %}&category={{ category_filter }}{% endif %}" class="page-link">Previous</a>
+            {% endif %}
+            
+            <span class="page-info">
+                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </span>
+            
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if category_filter %}&category={{ category_filter }}{% endif %}" class="page-link">Next</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}{% if category_filter %}&category={{ category_filter }}{% endif %}" class="page-link">Last &raquo;</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Template Preview Modal -->
+<div id="template-preview-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="preview-title">Template Preview</h3>
+            <button class="modal-close" onclick="closePreview()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="preview-content">
+                <!-- Template preview will be loaded here -->
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closePreview()">Close</button>
+            <button id="use-template-btn" class="btn btn-primary">Use This Template</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function useTemplate(templateId) {
+    if (confirm('Create a new workflow from this template?')) {
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+        const tokenElem = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = tokenElem && tokenElem.getAttribute('content') ? tokenElem.getAttribute('content') : getCookie('csrftoken');
+
+        fetch(`/api/templates/${templateId}/use_template/`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken || ''
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.id) {
+                alert('Workflow created from template successfully!');
+                window.location.href = `/workflows/${data.id}/edit/`;
+            } else {
+                alert('Error creating workflow from template');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error creating workflow from template');
+        });
+    }
+}
+
+function previewTemplate(templateId) {
+    fetch(`/api/templates/${templateId}/`, { credentials: 'same-origin' })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('preview-title').textContent = data.name;
+            document.getElementById('preview-content').innerHTML = `
+                <div class="template-preview">
+                    <div class="preview-section">
+                        <h4>Description</h4>
+                        <p>${data.description}</p>
+                    </div>
+                    <div class="preview-section">
+                        <h4>Category</h4>
+                        <span class="category-badge">${data.category}</span>
+                    </div>
+                    <div class="preview-section">
+                        <h4>Usage Statistics</h4>
+                        <p>Used ${data.usage_count} times</p>
+                    </div>
+                    <div class="preview-section">
+                        <h4>Template Structure</h4>
+                        <div class="template-structure">
+                            <p>Nodes: ${data.template_definition.nodes ? data.template_definition.nodes.length : 0}</p>
+                            <p>Connections: ${data.template_definition.connections ? data.template_definition.connections.length : 0}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('use-template-btn').onclick = () => {
+                closePreview();
+                useTemplate(templateId);
+            };
+            document.getElementById('template-preview-modal').style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error loading template preview');
+        });
+}
+
+function closePreview() {
+    document.getElementById('template-preview-modal').style.display = 'none';
+}
+
+function duplicateTemplate(templateId) {
+    if (confirm('Create a copy of this template?')) {
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+        const tokenElem = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = tokenElem && tokenElem.getAttribute('content') ? tokenElem.getAttribute('content') : getCookie('csrftoken');
+
+        fetch(`/api/templates/${templateId}/duplicate/`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken || ''
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.id) {
+                alert('Template duplicated successfully!');
+                location.reload();
+            } else {
+                alert('Error duplicating template');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error duplicating template');
+        });
+    }
+}
+
+function deleteTemplate(templateId) {
+    if (confirm('Are you sure you want to delete this template? This action cannot be undone.')) {
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+        const tokenElem = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = tokenElem && tokenElem.getAttribute('content') ? tokenElem.getAttribute('content') : getCookie('csrftoken');
+
+        fetch(`/api/templates/${templateId}/`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            headers: {
+                'X-CSRFToken': csrfToken || ''
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                alert('Template deleted successfully!');
+                location.reload();
+            } else {
+                alert('Error deleting template');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting template');
+        });
+    }
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('template-preview-modal');
+    if (event.target === modal) {
+        closePreview();
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,355 @@
+{% extends 'workflow_app/base.html' %}
+{% load static %}
+
+{% block title %}{{ workflow.name }} - Workflow Details{% endblock %}
+
+{% block extra_css %}
+<meta name="csrf-token" content="{{ csrf_token }}">
+<link rel="stylesheet" href="{% static 'workflow_app/css/workflow-detail.css' %}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="workflow-detail-container">
+    <div class="workflow-header">
+        <div class="header-content">
+            <div class="workflow-info">
+                <h1>{{ workflow.name }}</h1>
+                <p class="workflow-description">{{ workflow.description }}</p>
+                <div class="workflow-meta">
+                    <span class="status-badge status-{{ workflow.status }}">{{ workflow.get_status_display }}</span>
+                    <span class="meta-item">Created {{ workflow.created_at|timesince }} ago</span>
+                    <span class="meta-item">{{ node_count }} nodes, {{ connection_count }} connections</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <a href="{% url 'workflow_app:workflow_edit' workflow.id %}" class="btn btn-primary">
+                    <i class="fas fa-edit"></i> Edit
+                </a>
+                {% if workflow.status == 'active' %}
+                    <button class="btn btn-success" onclick="executeWorkflow()">
+                        <i class="fas fa-play"></i> Execute
+                    </button>
+                {% endif %}
+                <div class="dropdown">
+                    <button class="btn btn-outline dropdown-toggle">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <div class="dropdown-menu">
+                        <a href="#" onclick="duplicateWorkflow()">Duplicate</a>
+                        <a href="#" onclick="exportWorkflow()">Export</a>
+                        {% if workflow.status == 'active' %}
+                            <a href="#" onclick="deactivateWorkflow()">Deactivate</a>
+                        {% else %}
+                            <a href="#" onclick="activateWorkflow()">Activate</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-play-circle"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ total_executions }}</div>
+                <div class="stat-label">Total Executions</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon success">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ successful_executions }}</div>
+                <div class="stat-label">Successful</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon error">
+                <i class="fas fa-times-circle"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ failed_executions }}</div>
+                <div class="stat-label">Failed</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-percentage"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value">{{ success_rate }}%</div>
+                <div class="stat-label">Success Rate</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-grid">
+        <div class="main-content">
+            <div class="section">
+                <h2>Execution History</h2>
+                <div class="chart-container">
+                    <canvas id="executionChart"></canvas>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Recent Executions</h2>
+                <div class="executions-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Started</th>
+                                <th>Duration</th>
+                                <th>Trigger</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for execution in recent_executions %}
+                            <tr>
+                                <td>
+                                    <span class="status-badge status-{{ execution.status }}">
+                                        {{ execution.get_status_display }}
+                                    </span>
+                                </td>
+                                <td>{{ execution.created_at|timesince }} ago</td>
+                                <td>
+                                    {% if execution.duration_ms %}
+                                        {{ execution.duration_ms|floatformat:0 }}ms
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>{{ execution.get_triggered_by_display }}</td>
+                                <td>
+                                    <a href="/executions/{{ execution.id }}/" class="btn btn-sm btn-outline">
+                                        View Details
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="empty-message">No executions yet</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if total_executions > 10 %}
+                <div class="section-footer">
+                    <a href="{% url 'workflow_app:execution_list' %}?workflow={{ workflow.id }}" class="btn btn-outline">
+                        View All Executions
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="section">
+                <h3>Workflow Variables</h3>
+                {% if workflow.variables.all %}
+                    <div class="variables-list">
+                        {% for variable in workflow.variables.all %}
+                        <div class="variable-item">
+                            <div class="variable-name">{{ variable.name }}</div>
+                            <div class="variable-value">
+                                {% if variable.is_secret %}
+                                    <i class="fas fa-lock"></i> Hidden
+                                {% else %}
+                                    {{ variable.value|truncatechars:50 }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-message">No variables defined</p>
+                {% endif %}
+            </div>
+
+            <div class="section">
+                <h3>Webhooks</h3>
+                {% if workflow.webhooks.all %}
+                    <div class="webhooks-list">
+                        {% for webhook in workflow.webhooks.all %}
+                        <div class="webhook-item">
+                            <div class="webhook-method">{{ webhook.http_method }}</div>
+                            <div class="webhook-path">{{ webhook.endpoint_path }}</div>
+                            <div class="webhook-status">
+                                {% if webhook.is_active %}
+                                    <span class="status-active">Active</span>
+                                {% else %}
+                                    <span class="status-inactive">Inactive</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-message">No webhooks configured</p>
+                {% endif %}
+            </div>
+
+            <div class="section">
+                <h3>Tags</h3>
+                {% if workflow.tags %}
+                    <div class="tags-list">
+                        {% for tag in workflow.tags %}
+                            <span class="tag">{{ tag }}</span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-message">No tags</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- START: Corrected JavaScript Block ---
+
+// Execution history chart (This part is unchanged)
+const ctx = document.getElementById('executionChart').getContext('2d');
+const executionHistory = {{ execution_history|safe }};
+
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: executionHistory.map(item => item.day),
+        datasets: [{
+            label: 'Successful',
+            data: executionHistory.map(item => item.successful),
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            tension: 0.4
+        }, {
+            label: 'Failed',
+            data: executionHistory.map(item => item.failed),
+            borderColor: '#ef4444',
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            tension: 0.4
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+        plugins: { legend: { position: 'top' } }
+    }
+});
+
+// --- START: Corrected API Functions ---
+
+// Helper function to get the CSRF token from the meta tag
+function getCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+}
+
+// Reusable helper for making authenticated API calls
+async function apiCall(url, method = 'POST', body = {}) {
+    // Ensure we send cookies (session auth) so Django can verify CSRF token
+    // Also include a fallback to read the csrf token from the cookie if the meta tag is not present
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+
+    const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute
+        ? getCsrfToken()
+        : getCookie('csrftoken');
+
+    const response = await fetch(url, {
+        method: method,
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken || '',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        // Only include body for methods that allow it
+        ...(method !== 'GET' && { body: JSON.stringify(body) })
+    });
+    
+    const responseData = await response.json();
+    if (!response.ok) {
+        // Throw an error with the message from the server's response
+        throw new Error(responseData.detail || responseData.error || 'API request failed');
+    }
+    return responseData;
+}
+
+function executeWorkflow() {
+    if (confirm('Are you sure you want to execute this workflow?')) {
+        apiCall(`/api/workflows/{{ workflow.id }}/execute/`)
+            .then(data => {
+                alert('Workflow execution started successfully!');
+                location.reload();
+            })
+            .catch(error => {
+                console.error('Error executing workflow:', error);
+                alert('Error: ' + error.message);
+            });
+    }
+}
+
+function duplicateWorkflow() {
+    if (confirm('Create a copy of this workflow?')) {
+        apiCall(`/api/workflows/{{ workflow.id }}/duplicate/`)
+            .then(data => {
+                if (data.id) {
+                    alert('Workflow duplicated successfully!');
+                    window.location.href = `/workflow/${data.id}/edit/`;
+                }
+            })
+            .catch(error => {
+                console.error('Error duplicating workflow:', error);
+                alert('Error: ' + error.message);
+            });
+    }
+}
+
+function exportWorkflow() {
+    // This action is a GET request and doesn't need a CSRF token
+    window.open(`/api/workflows/{{ workflow.id }}/export/`, '_blank');
+}
+
+function activateWorkflow() {
+    if (confirm('Activate this workflow?')) {
+        apiCall(`/api/workflows/{{ workflow.id }}/activate/`)
+            .then(() => {
+                alert('Workflow activated successfully!');
+                location.reload();
+            })
+            .catch(error => {
+                console.error('Error activating workflow:', error);
+                alert('Error: ' + error.message);
+            });
+    }
+}
+
+function deactivateWorkflow() {
+    if (confirm('Deactivate this workflow?')) {
+        apiCall(`/api/workflows/{{ workflow.id }}/deactivate/`)
+            .then(() => {
+                alert('Workflow deactivated successfully!');
+                location.reload();
+            })
+            .catch(error => {
+                console.error('Error deactivating workflow:', error);
+                alert('Error: ' + error.message);
+            });
+    }
+}
+
+// --- END: Corrected JavaScript Block ---
+</script>   
+{% endblock %}

@@ -1,0 +1,185 @@
+{% extends 'workflow_app/base.html' %}
+{% load static %}
+
+{% block title %}My Workflows
+<meta name="csrf-token" content="{{ csrf_token }}">  {% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'workflow_app/css/workflow-list.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="workflow-list-container">
+    <div class="page-header">
+        <div class="header-content">
+            <h1>My Workflows</h1>
+            <div class="header-actions">
+                <a href="{% url 'workflow_app:workflow_create' %}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Create Workflow
+                </a>
+            </div>
+        </div>
+        
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-value">{{ total_workflows }}</span>
+                <span class="stat-label">Total</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ active_workflows }}</span>
+                <span class="stat-label">Active</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ draft_workflows }}</span>
+                <span class="stat-label">Drafts</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="filters-section">
+        <form method="get" class="filters-form">
+            <div class="filter-group">
+                <input type="text" name="search" placeholder="Search workflows..." 
+                       value="{{ search_query|default:'' }}" class="search-input">
+            </div>
+            <div class="filter-group">
+                <select name="status" class="status-filter">
+                    <option value="">All Status</option>
+                    <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+                    <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+                    <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-secondary">Filter</button>
+            {% if search_query or status_filter %}
+                <a href="{% url 'workflow_app:workflow_list' %}" class="btn btn-outline">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="workflows-grid">
+        {% for workflow in workflows %}
+        <div class="workflow-card">
+            <div class="workflow-header">
+                <h3 class="workflow-name">
+                    <a href="{% url 'workflow_app:workflow_detail' workflow.id %}">{{ workflow.name }}</a>
+                </h3>
+                <div class="workflow-status status-{{ workflow.status }}">
+                    {{ workflow.get_status_display }}
+                </div>
+            </div>
+            
+            <div class="workflow-description">
+                {{ workflow.description|truncatechars:120 }}
+            </div>
+            
+            <div class="workflow-stats">
+                <div class="stat">
+                    <i class="fas fa-play-circle"></i>
+                    <span>{{ workflow.execution_count|default:0 }} runs</span>
+                </div>
+                <div class="stat">
+                    <i class="fas fa-clock"></i>
+                    <span>{{ workflow.updated_at|timesince }} ago</span>
+                </div>
+            </div>
+            
+            <div class="workflow-actions">
+                <a href="{% url 'workflow_app:workflow_edit' workflow.id %}" class="btn btn-sm btn-outline">
+                    <i class="fas fa-edit"></i> Edit
+                </a>
+                {% if workflow.status == 'active' %}
+                    <button class="btn btn-sm btn-success" onclick="executeWorkflow('{{ workflow.id }}')">
+                        <i class="fas fa-play"></i> Run
+                    </button>
+                {% endif %}
+            </div>
+            
+            {% if workflow.tags %}
+            <div class="workflow-tags">
+                {% for tag in workflow.tags %}
+                    <span class="tag">{{ tag }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% empty %}
+        <div class="empty-state">
+            <i class="fas fa-project-diagram"></i>
+            <h3>No workflows found</h3>
+            <p>{% if search_query or status_filter %}Try adjusting your filters{% else %}Create your first workflow to get started{% endif %}</p>
+            {% if not search_query and not status_filter %}
+                <a href="{% url 'workflow_app:workflow_create' %}" class="btn btn-primary">Create Workflow</a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if page_obj.has_other_pages %}
+    <div class="pagination-container">
+        <div class="pagination">
+            {% if page_obj.has_previous %}
+                <a href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="page-link">&laquo; First</a>
+                <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="page-link">Previous</a>
+            {% endif %}
+            
+            <span class="page-info">
+                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </span>
+            
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="page-link">Next</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="page-link">Last &raquo;</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function executeWorkflow(workflowId) {
+    if (confirm('Are you sure you want to execute this workflow?')) {
+        // Fallback helper to read cookie
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = meta && meta.getAttribute('content') ? meta.getAttribute('content') : getCookie('csrftoken');
+
+        fetch(`/api/workflows/${workflowId}/execute/`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken || '',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({})
+        })
+        .then(response => {
+            if (!response.ok) {
+                // If response is not OK, try to parse error
+                return response.json().then(err => { throw err; });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.execution_id) {
+                alert('Workflow execution started successfully!');
+                // Optional: Redirect or refresh
+                window.location.href = `/executions/?workflow=${workflowId}`;
+            } else {
+                alert(data.error || 'Error starting workflow execution');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert(error.detail || 'An unexpected error occurred.');
+        });
+    }
+}
+</script>
+{% endblock %}

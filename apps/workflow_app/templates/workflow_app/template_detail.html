@@ -1,0 +1,198 @@
+{% extends 'workflow_app/base.html' %}
+{% load static %}
+
+{% block title %}{{ template.name }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'workflow_app/css/template-detail.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="template-detail-container">
+    <div class="template-header">
+        <div class="header-content">
+            <div class="template-info">
+                <h1>{{ template.name }}</h1>
+                <p class="template-description">{{ template.description }}</p>
+                
+                <div class="template-meta">
+                    <span class="meta-item">
+                        <i class="fas fa-folder"></i>
+                        {{ template.category|title }}
+                    </span>
+                    <span class="meta-item">
+                        <i class="fas fa-user"></i>
+                        {{ template.created_by.username }}
+                    </span>
+                    <span class="meta-item">
+                        <i class="fas fa-clock"></i>
+                        {{ template.created_at|timesince }} ago
+                    </span>
+                    <span class="meta-item">
+                        <i class="fas fa-download"></i>
+                        {{ template.usage_count }} uses
+                    </span>
+                </div>
+                
+                <div class="template-badges">
+                    {% if template.is_public %}
+                        <span class="badge public">
+                            <i class="fas fa-globe"></i> Public
+                        </span>
+                    {% else %}
+                        <span class="badge private">
+                            <i class="fas fa-lock"></i> Private
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="header-actions">
+                <button class="btn btn-primary" onclick="useTemplate('{{ template.id }}')">
+                    <i class="fas fa-magic"></i> Use Template
+                </button>
+                {% if can_edit %}
+                    <a href="{% url 'workflow_app:template_edit' template.id %}" class="btn btn-outline">
+                        <i class="fas fa-edit"></i> Edit
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="template-content">
+        <div class="content-grid">
+            <div class="main-content">
+                <div class="section">
+                    <h3>Template Structure</h3>
+                    <div class="structure-stats">
+                        <div class="stat-card">
+                            <div class="stat-value">{{ node_count }}</div>
+                            <div class="stat-label">Nodes</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">{{ connection_count }}</div>
+                            <div class="stat-label">Connections</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h3>Template Preview</h3>
+                    <div class="template-preview">
+                        <div id="template-canvas" class="canvas-preview">
+                            <!-- Template visualization will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sidebar">
+                <div class="section">
+                    <h3>Usage Instructions</h3>
+                    <div class="instructions">
+                        <ol>
+                            <li>Click "Use Template" to create a new workflow</li>
+                            <li>Customize the workflow nodes as needed</li>
+                            <li>Configure your specific settings</li>
+                            <li>Test and deploy your workflow</li>
+                        </ol>
+                    </div>
+                </div>
+                
+                {% if template.tags %}
+                <div class="section">
+                    <h3>Tags</h3>
+                    <div class="template-tags">
+                        {% for tag in template.tags %}
+                            <span class="tag">{{ tag }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Render template preview
+document.addEventListener('DOMContentLoaded', function() {
+    const templateData = {{ template.template_definition|safe }};
+    renderTemplatePreview(templateData);
+});
+
+function renderTemplatePreview(templateData) {
+    const canvas = document.getElementById('template-canvas');
+    if (!templateData.nodes || templateData.nodes.length === 0) {
+        canvas.innerHTML = '<div class="empty-preview">No nodes to preview</div>';
+        return;
+    }
+    
+    // Simple node visualization
+    let html = '<div class="nodes-preview">';
+    templateData.nodes.forEach(node => {
+        html += `
+            <div class="preview-node" data-type="${node.type}">
+                <div class="node-icon">
+                    <i class="fas fa-${getNodeIcon(node.type)}"></i>
+                </div>
+                <div class="node-name">${node.name || node.type}</div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    canvas.innerHTML = html;
+}
+
+function getNodeIcon(nodeType) {
+    const icons = {
+        'trigger': 'play-circle',
+        'http': 'globe',
+        'database': 'database',
+        'email': 'envelope',
+        'webhook': 'link',
+        'condition': 'code-branch',
+        'transform': 'exchange-alt',
+        'delay': 'clock',
+        'default': 'cube'
+    };
+    return icons[nodeType] || icons.default;
+}
+
+function useTemplate(templateId) {
+    if (confirm('Create a new workflow from this template?')) {
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+        const tokenElem = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = tokenElem && tokenElem.getAttribute('content') ? tokenElem.getAttribute('content') : getCookie('csrftoken');
+
+        fetch(`/workflow/api/templates/${templateId}/use_template/`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken || ''
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.id) {
+                alert('Workflow created from template successfully!');
+                window.location.href = `/workflow/${data.id}/edit/`;
+            } else {
+                alert('Error creating workflow from template');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error creating workflow from template');
+        });
+    }
+}
+</script>
+{% endblock %}

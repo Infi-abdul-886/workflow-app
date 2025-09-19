@@ -1,0 +1,61 @@
+{% extends 'workflow_app/base.html' %}
+{% load static %}
+
+{% block title %}Edit Template - {{ template.name }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'workflow_app/css/template-form.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="template-form-container">
+    <div class="page-header">
+        <h1>Edit Template</h1>
+        <p>Update your workflow template settings</p>
+    </div>
+
+    <form method="post" class="template-form">
+        {% csrf_token %}
+        
+        <div class="form-section">
+            <h3>Template Information</h3>
+            
+            <div class="form-group">
+                <label for="name">Template Name *</label>
+                <input type="text" id="name" name="name" required 
+                       value="{{ template.name }}" placeholder="Enter template name">
+            </div>
+            
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea id="description" name="description" rows="4" 
+                          placeholder="Describe what this template does">{{ template.description }}</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="category">Category</label>
+                <select id="category" name="category">
+                    {% for category in categories %}
+                        <option value="{{ category }}" {% if template.category == category %}selected{% endif %}>
+                            {{ category|title }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="is_public" {% if template.is_public %}checked{% endif %}>
+                    <span class="checkmark"></span>
+                    Make this template public (visible to all users)
+                </label>
+            </div>
+        </div>
+        
+        <div class="form-actions">
+            <a href="{% url 'workflow_app:template_detail' template.id %}" class="btn btn-outline">Cancel</a>
+            <button type="submit" class="btn btn-primary">Update Template</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

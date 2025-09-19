@@ -1,0 +1,398 @@
+{% extends 'workflow_app/base.html' %}
+{% load static %}
+{% load workflow_extras %}
+
+{% block title %}Workflow Executions{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'workflow_app/css/execution-list.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="execution-list-container">
+    <div class="page-header">
+        <div class="header-content">
+            <h1>Workflow Executions</h1>
+        </div>
+        
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-value">{{ total_executions }}</span>
+                <span class="stat-label">Total</span>
+            </div>
+            <div class="stat-item success">
+                <span class="stat-value">{{ successful_executions }}</span>
+                <span class="stat-label">Successful</span>
+            </div>
+            <div class="stat-item error">
+                <span class="stat-value">{{ failed_executions }}</span>
+                <span class="stat-label">Failed</span>
+            </div>
+            <div class="stat-item warning">
+                <span class="stat-value">{{ running_executions }}</span>
+                <span class="stat-label">Running</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ success_rate }}%</span>
+                <span class="stat-label">Success Rate</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="filters-section">
+        <form method="get" class="filters-form">
+            <div class="filter-group">
+                <select name="workflow" class="workflow-filter">
+                    <option value="">All Workflows</option>
+                    {% for workflow in user_workflows %}
+                        <option value="{{ workflow.id }}" {% if workflow_filter == workflow.id|stringformat:"s" %}selected{% endif %}>
+                            {{ workflow.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <select name="status" class="status-filter">
+                    <option value="">All Status</option>
+                    <option value="success" {% if status_filter == 'success' %}selected{% endif %}>Success</option>
+                    <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+                    <option value="running" {% if status_filter == 'running' %}selected{% endif %}>Running</option>
+                    <option value="queued" {% if status_filter == 'queued' %}selected{% endif %}>Queued</option>
+                    <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <input type="date" name="date_from" value="{{ date_from|date:'Y-m-d' }}" class="date-filter">
+                <span class="date-separator">to</span>
+                <input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}" class="date-filter">
+            </div>
+            <button type="submit" class="btn btn-secondary">Filter</button>
+            {% if workflow_filter or status_filter or date_from or date_to %}
+                <a href="{% url 'workflow_app:execution_list' %}" class="btn btn-outline">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="executions-table-container">
+        <table class="executions-table">
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Workflow</th>
+                    <th>Started</th>
+                    <th>Duration</th>
+                    <th>Trigger</th>
+                    <th>Triggered By</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for execution in executions %}
+                <tr class="execution-row" data-execution-id="{{ execution.id }}">
+                    <td>
+                        <div class="status-cell">
+                            <span class="status-badge status-{{ execution.status }}">
+                                {% if execution.status == 'success' %}
+                                    <i class="fas fa-check-circle"></i>
+                                {% elif execution.status == 'failed' %}
+                                    <i class="fas fa-times-circle"></i>
+                                {% elif execution.status == 'running' %}
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                {% elif execution.status == 'queued' %}
+                                    <i class="fas fa-clock"></i>
+                                {% elif execution.status == 'cancelled' %}
+                                    <i class="fas fa-ban"></i>
+                                {% endif %}
+                                {{ execution.get_status_display }}
+                            </span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="workflow-cell">
+                            <a href="{% url 'workflow_app:workflow_detail' execution.workflow.id %}" class="workflow-link">
+                                {{ execution.workflow.name }}
+                            </a>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="time-cell">
+                            <span class="time-primary">{{ execution.started_at|date:"M d, H:i" }}</span>
+                            <span class="time-secondary">{{ execution.started_at|timesince }} ago</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="duration-cell">
+                            {% if execution.duration_seconds %}
+                                {% if execution.duration_seconds < 60 %}
+                                    {{ execution.duration_seconds|floatformat:1 }}s
+                                {% else %}
+                                    {{ execution.duration_seconds|floatformat:0|div:60 }}m {{ execution.duration_seconds|floatformat:0|mod:60 }}s
+                                {% endif %}
+                            {% elif execution.status == 'running' %}
+                                <span class="running-duration" data-start="{{ execution.started_at|date:'c' }}">
+                                    <i class="fas fa-spinner fa-spin"></i> Running...
+                                </span>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="trigger-cell">
+                            <span class="trigger-badge trigger-{{ execution.triggered_by }}">
+                                {% if execution.triggered_by == 'manual' %}
+                                    <i class="fas fa-hand-pointer"></i> Manual
+                                {% elif execution.triggered_by == 'webhook' %}
+                                    <i class="fas fa-globe"></i> Webhook
+                                {% elif execution.triggered_by == 'schedule' %}
+                                    <i class="fas fa-clock"></i> Schedule
+                                {% else %}
+                                    <i class="fas fa-question"></i> {{ execution.get_triggered_by_display }}
+                                {% endif %}
+                            </span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="user-cell">
+                            {% if execution.triggered_by_user %}
+                                <i class="fas fa-user"></i> {{ execution.triggered_by_user.username }}
+                            {% else %}
+                                <i class="fas fa-robot"></i> System
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="actions-cell">
+                            <button class="btn btn-sm btn-outline" onclick="viewExecutionDetails('{{ execution.id }}')">
+                                <i class="fas fa-eye"></i> Details
+                            </button>
+                            {% if execution.status in 'queued,running' %}
+                                <button class="btn btn-sm btn-danger" onclick="cancelExecution('{{ execution.id }}')">
+                                    <i class="fas fa-stop"></i> Cancel
+                                </button>
+                            {% endif %}
+                            {% if execution.status == 'failed' %}
+                                <button class="btn btn-sm btn-warning" onclick="retryExecution('{{ execution.id }}')">
+                                    <i class="fas fa-redo"></i> Retry
+                                </button>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="empty-message">
+                        <div class="empty-state">
+                            <i class="fas fa-play-circle"></i>
+                            <h3>No executions found</h3>
+                            <p>{% if workflow_filter or status_filter or date_from or date_to %}Try adjusting your filters{% else %}Execute a workflow to see results here{% endif %}</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.has_other_pages %}
+    <div class="pagination-container">
+        <div class="pagination">
+            {% if page_obj.has_previous %}
+                <a href="?page=1{% if workflow_filter %}&workflow={{ workflow_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_from %}&date_from={{ date_from|date:'Y-m-d' }}{% endif %}{% if date_to %}&date_to={{ date_to|date:'Y-m-d' }}{% endif %}" class="page-link">&laquo; First</a>
+                <a href="?page={{ page_obj.previous_page_number }}{% if workflow_filter %}&workflow={{ workflow_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_from %}&date_from={{ date_from|date:'Y-m-d' }}{% endif %}{% if date_to %}&date_to={{ date_to|date:'Y-m-d' }}{% endif %}" class="page-link">Previous</a>
+            {% endif %}
+            
+            <span class="page-info">
+                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </span>
+            
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}{% if workflow_filter %}&workflow={{ workflow_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_from %}&date_from={{ date_from|date:'Y-m-d' }}{% endif %}{% if date_to %}&date_to={{ date_to|date:'Y-m-d' }}{% endif %}" class="page-link">Next</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}{% if workflow_filter %}&workflow={{ workflow_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_from %}&date_from={{ date_from|date:'Y-m-d' }}{% endif %}{% if date_to %}&date_to={{ date_to|date:'Y-m-d' }}{% endif %}" class="page-link">Last &raquo;</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Execution Details Modal -->
+<div id="execution-details-modal" class="modal" style="display: none;">
+    <div class="modal-content large">
+        <div class="modal-header">
+            <h3 id="execution-title">Execution Details</h3>
+            <button class="modal-close" onclick="closeExecutionDetails()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="execution-details-content">
+                <!-- Execution details will be loaded here -->
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeExecutionDetails()">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function viewExecutionDetails(executionId) {
+    fetch(`/api/executions/${executionId}/logs/`, { credentials: 'same-origin' })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('execution-title').textContent = `Execution ${executionId}`;
+            
+            let logsHtml = '<div class="execution-logs">';
+            if (data.logs && data.logs.length > 0) {
+                data.logs.forEach(log => {
+                    logsHtml += `
+                        <div class="log-entry log-${log.level.toLowerCase()}">
+                            <div class="log-header">
+                                <span class="log-timestamp">${new Date(log.timestamp).toLocaleString()}</span>
+                                <span class="log-level">${log.level}</span>
+                                <span class="log-node">${log.node_name}</span>
+                            </div>
+                            <div class="log-message">${log.message}</div>
+                            ${log.duration_ms ? `<div class="log-duration">Duration: ${log.duration_ms}ms</div>` : ''}
+                        </div>
+                    `;
+                });
+            } else {
+                logsHtml += '<div class="no-logs">No logs available for this execution.</div>';
+            }
+            logsHtml += '</div>';
+            
+            document.getElementById('execution-details-content').innerHTML = logsHtml;
+            document.getElementById('execution-details-modal').style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error loading execution details');
+        });
+}
+
+function closeExecutionDetails() {
+    document.getElementById('execution-details-modal').style.display = 'none';
+}
+
+function cancelExecution(executionId) {
+    if (confirm('Are you sure you want to cancel this execution?')) {
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+
+        const tokenElem = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = tokenElem && tokenElem.getAttribute('content') ? tokenElem.getAttribute('content') : getCookie('csrftoken');
+
+        fetch(`/api/executions/${executionId}/cancel/`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken || ''
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'cancelled') {
+                alert('Execution cancelled successfully!');
+                location.reload();
+            } else {
+                alert('Error cancelling execution');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error cancelling execution');
+        });
+    }
+}
+
+function retryExecution(executionId) {
+    if (confirm('Retry this failed execution?')) {
+        // Get the original execution details and create a new execution
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+
+        const tokenElem = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = tokenElem && tokenElem.getAttribute('content') ? tokenElem.getAttribute('content') : getCookie('csrftoken');
+
+        fetch(`/api/executions/${executionId}/`, { credentials: 'same-origin' })
+            .then(response => response.json())
+            .then(execution => {
+                return fetch(`/api/workflows/${execution.workflow}/execute/`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken || ''
+                    },
+                    body: JSON.stringify({
+                        input_data: execution.input_data || {}
+                    })
+                });
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.execution_id) {
+                    alert('Execution retried successfully!');
+                    location.reload();
+                } else {
+                    alert('Error retrying execution');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error retrying execution');
+            });
+    }
+}
+
+// Update running durations every second
+setInterval(() => {
+    document.querySelectorAll('.running-duration').forEach(element => {
+        const startTime = new Date(element.dataset.start);
+        const now = new Date();
+        const duration = Math.floor((now - startTime) / 1000);
+        
+        if (duration < 60) {
+            element.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${duration}s`;
+        } else {
+            const minutes = Math.floor(duration / 60);
+            const seconds = duration % 60;
+            element.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${minutes}m ${seconds}s`;
+        }
+    });
+}, 1000);
+
+// Auto-refresh running executions every 10 seconds
+setInterval(() => {
+        if (document.querySelectorAll('.status-running, .status-queued').length > 0) {
+        // Only refresh if there are running/queued executions
+        const currentUrl = new URL(window.location);
+            fetch(currentUrl.toString(), { credentials: 'same-origin' })
+            .then(response => response.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const newTableBody = doc.querySelector('.executions-table tbody');
+                if (newTableBody) {
+                    document.querySelector('.executions-table tbody').innerHTML = newTableBody.innerHTML;
+                }
+            })
+            .catch(error => console.error('Error refreshing executions:', error));
+    }
+}, 10000);
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.getElementById('execution-details-modal');
+    if (event.target === modal) {
+        closeExecutionDetails();
+    }
+}
+</script>
+{% endblock %}
